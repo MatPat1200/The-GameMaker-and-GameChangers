@@ -1,0 +1,291 @@
+namespace SpriteKind {
+    export const Player = SpriteKind.create();
+    export const Ball = SpriteKind.create();
+}
+
+class Player {
+    name: string;
+    strength: number;
+    stamina: number;
+    running: number;
+    catching: number;
+    sprite: Sprite;
+    staminaBar: Sprite;
+
+    constructor(name: string, strength: number, stamina: number, running: number, catching: number) {
+        this.name = name;
+        this.strength = strength;
+        this.stamina = stamina;
+        this.running = running;
+        this.catching = catching;
+
+        this.sprite = sprites.create(img`
+            . . . . . . . . . . . . . . . .
+            . . . . . . 6 6 6 6 . . . . . .
+            . . . . . 6 6 6 6 6 6 . . . . .
+            . . . . 6 6 6 6 6 6 6 6 . . . .
+            . . . . 6 6 6 6 6 6 6 6 . . . .
+            . . . . . 6 6 6 6 6 6 . . . . .
+            . . . . . . 6 6 6 6 . . . . . .
+            . . . . . . . . . . . . . . . .
+        `, SpriteKind.Player);
+        
+        this.staminaBar = sprites.create(img`
+            . . . . . . . . . . . . . . . .
+            . . . . . . 2 2 2 2 2 2 2 2 . .
+            . . . . . 2 2 2 2 2 2 2 2 2 2 .
+            . . . . 2 2 2 2 2 2 2 2 2 2 2
+            . . . . 2 2 2 2 2 2 2 2 2 2 2
+            . . . . . 2 2 2 2 2 2 2 2 . . .
+            . . . . . . 2 2 2 2 . . . . . .
+            . . . . . . . . . . . . . . . .
+        `, SpriteKind.Player);
+        this.staminaBar.setPosition(this.sprite.x, this.sprite.y - 10);
+        this.updateStats();
+    }
+
+    updateStats(): void {
+        this.staminaBar.width = this.stamina * 2;
+    }
+
+    getStats(): string {
+        return `${this.name}\nStrength: ${this.strength}\nStamina: ${this.stamina}\nRunning: ${this.running}\nCatching: ${this.catching}`;
+    }
+
+    decreaseStamina(amount: number): void {
+        this.stamina = Math.max(this.stamina - amount, 0);
+        this.updateStats();
+    }
+}
+
+class Team {
+    name: string;
+    rating: number;
+    players: Player[];
+
+    constructor(name: string, rating: number) {
+        this.name = name;
+        this.rating = rating;
+        this.players = [];
+        for (let i = 0; i < 40; i++) {
+            this.players.push(new Player(`Player ${i + 1}`, Math.random() * 10, Math.random() * 10, Math.random() * 10, Math.random() * 10));
+        }
+    }
+
+    getRoster(): string {
+        return this.players.map(player => player.getStats()).join("\n\n");
+    }
+
+    getPlayer(index: number): Player | null {
+        return this.players[index] || null;
+    }
+}
+
+class Game {
+    private teams: Team[] = [];
+    private selectedTeam: Team | null = null;
+    private opponentTeam: Team | null = null;
+    private ball: Sprite | null = null;
+    private field: Sprite | null = null;
+    private camera: Camera = scene.cameraFollowSprite();
+    private currentPlay: string = "";
+
+    constructor() {
+        this.generateTeams();
+        this.showMenu();
+    }
+
+    private generateTeams(): void {
+        const teamNames = [
+            "Warriors", "Dragons", "Titans", "Panthers", "Eagles",
+            "Hawks", "Raptors", "Sharks", "Cobras", "Bulls",
+            "Lions", "Tigers", "Bears", "Wolves", "Spartans",
+            "Raiders", "Vikings", "Knights", "Samurai", "Falcons",
+            "Hurricanes", "Mustangs", "Rangers", "Bulldogs", "Giants"
+        ];
+
+        teamNames.forEach(name => {
+            this.teams.push(new Team(name, Math.random() * 14 + 81));
+        });
+    }
+
+    private showMenu(): void {
+        game.showMenu("Welcome to the Football Game!\nSelect an option:",
+            [
+                { text: "Select Team", action: () => this.selectTeam() },
+                { text: "View Roster", action: () => this.viewRoster() },
+                { text: "Start Game", action: () => this.startGame() }
+            ]
+        );
+    }
+
+    private selectTeam(): void {
+        let teamOptions = this.teams.map(team => team.name);
+        game.showMenu("Select your team:",
+            teamOptions.map(name => ({ text: name, action: () => this.confirmTeam(name) }))
+        );
+    }
+
+    private confirmTeam(name: string): void {
+        this.selectedTeam = this.teams.find(team => team.name === name) || null;
+        if (this.selectedTeam) {
+            game.showMenu(`You selected ${this.selectedTeam.name}. Choose an opponent:`,
+                this.teams.filter(team => team !== this.selectedTeam).map(team => ({ text: team.name, action: () => this.confirmOpponent(team) }))
+            );
+        }
+    }
+
+    private confirmOpponent(team: Team): void {
+        this.opponentTeam = team;
+        this.showMenu();
+    }
+
+    private viewRoster(): void {
+        if (this.selectedTeam) {
+            game.showLongText(this.selectedTeam.getRoster(), DialogLayout.Full);
+        }
+    }
+
+    private startGame(): void {
+        if (this.selectedTeam && this.opponentTeam) {
+            this.initializeField();
+            this.initializePlayers();
+            this.setupGameplay();
+        } else {
+            game.showLongText("Please select both a team and an opponent.", DialogLayout.Full);
+        }
+    }
+
+    private initializeField(): void {
+        if (this.field) {
+            this.field.destroy();
+        }
+        this.field = sprites.create(img`
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+            . . . . . . . . . . . . . . . .
+        `, SpriteKind.Player);
+        this.field.setPosition(80, 60);
+    }
+
+    private initializePlayers(): void {
+        const team1X = 10;
+        const team2X = 150;
+        const y = 60;
+
+        if (this.selectedTeam) {
+            this.selectedTeam.players.forEach((player, index) => {
+                let spriteX = team1X + (index % 5) * 10;
+                let spriteY = y + Math.floor(index / 5) * 10;
+                player.sprite.setPosition(spriteX, spriteY);
+                player.staminaBar.setPosition(spriteX, spriteY - 10);
+            });
+        }
+
+        if (this.opponentTeam) {
+            this.opponentTeam.players.forEach((player, index) => {
+                let spriteX = team2X + (index % 5) * 10;
+                let spriteY = y + Math.floor(index / 5) * 10;
+                player.sprite.setPosition(spriteX, spriteY);
+                player.staminaBar.setPosition(spriteX, spriteY - 10);
+            });
+        }
+    }
+
+    private setupGameplay(): void {
+        this.ball = sprites.create(img`
+            . . . . . . . . . . . . . . . .
+            . . . . . . 1 1 1 1 . . . . . .
+            . . . . . 1 1 1 1 1 1 . . . . .
+            . . . . 1 1 1 1 1 1 1 1 . . . .
+            . . . . 1 1 1 1 1 1 1 1 . . . .
+            . . . . . 1 1 1 1 1 1 . . . . .
+            . . . . . . 1 1 1 1 . . . . . .
+            . . . . . . . . . . . . . . . .
+        `, SpriteKind.Ball);
+        this.ball.setPosition(80, 60);
+
+        this.setupControls();
+        this.setupCamera();
+    }
+
+    private setupControls(): void {
+        controller.A.onEvent(ControllerButtonEvent.Pressed, () => {
+            this.choosePlay();
+        });
+
+        controller.B.onEvent(ControllerButtonEvent.Pressed, () => {
+            this.viewRoster();
+        });
+
+        controller.left.onEvent(ControllerButtonEvent.Pressed, () => {
+            this.moveBall(-10, 0);
+        });
+
+        controller.right.onEvent(ControllerButtonEvent.Pressed, () => {
+            this.moveBall(10, 0);
+        });
+
+        controller.up.onEvent(ControllerButtonEvent.Pressed, () => {
+            this.moveBall(0, -10);
+        });
+
+        controller.down.onEvent(ControllerButtonEvent.Pressed, () => {
+            this.moveBall(0, 10);
+        });
+    }
+
+    private setupCamera(): void {
+        scene.cameraFollowSprite(this.ball!);
+    }
+
+    private moveBall(x: number, y: number): void {
+        if (this.ball) {
+            this.ball.x += x;
+            this.ball.y += y;
+        }
+    }
+
+    private choosePlay(): void {
+        let plays = ["Run", "Pass", "Kick"];
+        game.showMenu("Choose a play:",
+            plays.map(play => ({ text: play, action: () => this.setPlay(play) }))
+        );
+    }
+
+    private setPlay(play: string): void {
+        this.currentPlay = play;
+        game.showLongText(`Play chosen: ${play}`, DialogLayout.Full);
+    }
+
+    private throwBallToReceiver(): void {
+        if (this.ball) {
+            this.ball.setPosition(controller.dx() + this.ball.x, controller.dy() + this.ball.y);
+            this.camera.followSprite(this.ball);
+        }
+    }
+
+    private scoreTouchdown(): void {
+        game.showLongText("Touchdown!", DialogLayout.Full);
+        if (this.selectedTeam) {
+            game.showLongText(`${this.selectedTeam.name} scored a touchdown!`, DialogLayout.Full);
+        }
+    }
+
+    private viewRoster(): void {
+        if (this.selectedTeam) {
+            game.showLongText(this.selectedTeam.getRoster(), DialogLayout.Full);
+        }
+    }
+}
+
+let gameInstance = new Game();
